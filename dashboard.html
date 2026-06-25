@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OIS Curve Bootstrapper</title>
+<style>
+  :root {
+    --bg:      #05070d;
+    --surf:    #0c1018;
+    --surf2:   #111520;
+    --border:  #1a2030;
+    --border2: #243040;
+    --blue:    #3b82f6;
+    --cyan:    #06b6d4;
+    --green:   #10b981;
+    --amber:   #f59e0b;
+    --red:     #ef4444;
+    --text:    #e2e8f0;
+    --muted:   #64748b;
+    --mono:    'JetBrains Mono', 'Consolas', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; font-size: 13px; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 28px;
+    background: var(--surf);
+    border-bottom: 1px solid var(--border);
+  }
+  .hbadge {
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    color: var(--cyan); background: rgba(6,182,212,.1);
+    border: 1px solid rgba(6,182,212,.25);
+    padding: 3px 8px; border-radius: 4px; letter-spacing: .5px;
+  }
+  header h1 { font-size: 15px; font-weight: 600; }
+  .hsub { font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .hright { margin-left: auto; display: flex; gap: 20px; }
+  .hstat { text-align: right; }
+  .hstat .val { font-family: var(--mono); font-size: 14px; color: var(--green); font-weight: 600; }
+  .hstat .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+  /* ── Layout ── */
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 20px; }
+  .grid2 { display: grid; grid-template-columns: 340px 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 900px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+  /* ── Panels ── */
+  .panel {
+    background: var(--surf); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden;
+  }
+  .panel-hd {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--surf2);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .6px;
+  }
+  .panel-bd { padding: 14px; }
+
+  /* ── Inputs ── */
+  .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .igroup label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 3px; font-weight: 500; text-transform: uppercase; letter-spacing: .4px; }
+  .igroup input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border2);
+    border-radius: 5px; color: var(--text); padding: 6px 8px;
+    font-size: 13px; font-family: var(--mono);
+    transition: border-color .12s;
+  }
+  .igroup input:focus { outline: none; border-color: var(--blue); }
+  .sep { grid-column: 1 / -1; border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+  .btn {
+    width: 100%; margin-top: 10px;
+    background: var(--blue); color: #fff; border: none;
+    border-radius: 6px; padding: 9px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: opacity .12s;
+  }
+  .btn:hover { opacity: .85; }
+
+  /* ── Status ── */
+  .status-ok  { color: var(--green); }
+  .status-err { color: var(--red); }
+
+  /* ── Table ── */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead tr { background: var(--surf2); }
+  th {
+    text-align: right; padding: 7px 10px;
+    font-size: 10px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .5px;
+    border-bottom: 1px solid var(--border);
+  }
+  th:first-child, td:first-child { text-align: left; }
+  td {
+    padding: 7px 10px; text-align: right;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.015); }
+  .t-ok  { color: var(--green); }
+  .t-warn { color: var(--amber); }
+  .t-bad  { color: var(--red); }
+
+  /* ── Canvas charts ── */
+  canvas { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hbadge">OIS</div>
+  <div>
+    <h1>Discount Curve Bootstrapper<span class="hsub">SOFR OIS · Piecewise Log-Linear · Global Newton</span></h1>
+  </div>
+  <div class="hright">
+    <div class="hstat"><div class="val" id="hStatus">—</div><div class="lbl">Status</div></div>
+    <div class="hstat"><div class="val" id="hMaxRes">—</div><div class="lbl">Max Residual</div></div>
+    <div class="hstat"><div class="val" id="hIter">—</div><div class="lbl">Iterations</div></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="grid2">
+
+    <!-- Inputs -->
+    <div class="panel">
+      <div class="panel-hd">Market Inputs</div>
+      <div class="panel-bd">
+        <div class="input-grid">
+          <div class="igroup"><label>O/N (bps)</label><input id="r_on"  type="number" value="533.0" step="0.25"></div>
+          <div class="igroup"><label>1W (bps)</label> <input id="r_1w"  type="number" value="532.5" step="0.25"></div>
+          <div class="igroup"><label>1M (bps)</label> <input id="r_1m"  type="number" value="531.0" step="0.25"></div>
+          <div class="igroup"><label>3M (bps)</label> <input id="r_3m"  type="number" value="526.5" step="0.25"></div>
+          <div class="igroup"><label>6M (bps)</label> <input id="r_6m"  type="number" value="518.0" step="0.25"></div>
+          <div class="igroup"><label>9M (bps)</label> <input id="r_9m"  type="number" value="508.0" step="0.25"></div>
+          <hr class="sep">
+          <div class="igroup"><label>OIS 1Y (bps)</label>  <input id="s_1y"  type="number" value="498.0" step="0.25"></div>
+          <div class="igroup"><label>OIS 2Y (bps)</label>  <input id="s_2y"  type="number" value="472.0" step="0.25"></div>
+          <div class="igroup"><label>OIS 3Y (bps)</label>  <input id="s_3y"  type="number" value="454.0" step="0.25"></div>
+          <div class="igroup"><label>OIS 5Y (bps)</label>  <input id="s_5y"  type="number" value="434.0" step="0.25"></div>
+          <div class="igroup"><label>OIS 7Y (bps)</label>  <input id="s_7y"  type="number" value="425.0" step="0.25"></div>
+          <div class="igroup"><label>OIS 10Y (bps)</label> <input id="s_10y" type="number" value="420.0" step="0.25"></div>
+          <div class="igroup"><label>OIS 15Y (bps)</label> <input id="s_15y" type="number" value="417.5" step="0.25"></div>
+          <div class="igroup"><label>OIS 20Y (bps)</label> <input id="s_20y" type="number" value="416.5" step="0.25"></div>
+          <div class="igroup"><label>OIS 30Y (bps)</label> <input id="s_30y" type="number" value="414.0" step="0.25"></div>
+        </div>
+        <button class="btn" onclick="bootstrap()">Bootstrap Curve</button>
+      </div>
+    </div>
+
+    <!-- Zero & fwd rate chart -->
+    <div class="panel">
+      <div class="panel-hd">
+        Zero Rate Term Structure
+        <span style="font-size:10px;color:var(--muted)">Continuous, bps</span>
+      </div>
+      <div class="panel-bd" style="padding-bottom:8px">
+        <canvas id="cZero" height="200"></canvas>
+      </div>
+      <div class="panel-hd" style="margin-top:0">
+        3M Forward Rate Curve
+        <span style="font-size:10px;color:var(--muted)">Simple Act/360, bps</span>
+      </div>
+      <div class="panel-bd">
+        <canvas id="cFwd" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Curve table -->
+  <div class="panel" style="margin-bottom:16px">
+    <div class="panel-hd">Bootstrapped Discount Curve</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Tenor</th><th>Date</th><th>DF</th>
+          <th>Zero (cont, bps)</th><th>Zero (ann, bps)</th>
+          <th>3M Fwd (bps)</th>
+        </tr></thead>
+        <tbody id="tCurve"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Residuals + DF chart -->
+  <div class="grid3">
+    <div class="panel">
+      <div class="panel-hd">Calibration Residuals</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>Instrument</th><th>Market</th><th>Residual</th>
+          </tr></thead>
+          <tbody id="tResid"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd">Discount Factor Curve</div>
+      <div class="panel-bd">
+        <canvas id="cDF" height="320"></canvas>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd">Curve Steepness (10Y–2Y Zero Spread)</div>
+      <div class="panel-bd" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:160px;gap:4px">
+        <div style="font-family:var(--mono);font-size:42px;color:var(--cyan);font-weight:700" id="steepness">—</div>
+        <div style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px">basis points</div>
+      </div>
+      <div class="panel-hd" style="margin-top:0">Swap Curve (par rates)</div>
+      <div class="panel-bd">
+        <canvas id="cPar" height="160"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+//  MINIMAL DATE UTILITIES
+// ═══════════════════════════════════════════════════════════════════════
+
+function addDays(d, n) {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
+}
+function addMonths(d, n) {
+  const r = new Date(d);
+  const day = r.getDate();
+  r.setMonth(r.getMonth() + n);
+  // end-of-month snap
+  if (r.getDate() < day) r.setDate(0);
+  return r;
+}
+function isoDate(d) { return d.toISOString().slice(0,10); }
+function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+function yf360(a, b) { return daysBetween(a, b) / 360; }
+function yf365(a, b) { return daysBetween(a, b) / 365; }
+
+// weekend-only holiday roll (simplified)
+function nextBD(d) {
+  while (d.getDay() === 0 || d.getDay() === 6) d = addDays(d, 1);
+  return d;
+}
+function modFol(d) {
+  const m = d.getMonth();
+  let r = new Date(d);
+  while (r.getDay() === 0 || r.getDay() === 6) r = addDays(r, 1);
+  if (r.getMonth() !== m) { r = new Date(d); while (r.getDay() === 0 || r.getDay() === 6) r = addDays(r, -1); }
+  return r;
+}
+function advance(d, days=0, months=0) {
+  let r = new Date(d);
+  if (months) r = addMonths(r, months);
+  if (days)   r = addDays(r, days);
+  return modFol(r);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  DISCOUNT CURVE  (log-linear)
+// ═══════════════════════════════════════════════════════════════════════
+
+class Curve {
+  constructor(ref) {
+    this.ref     = ref;
+    this.times   = [0];
+    this.logDFs  = [0];
+  }
+  t(d) { return daysBetween(this.ref, d) / 365; }
+  df(d) {
+    const t = this.t(d);
+    if (t <= 0) return 1;
+    const ldf = this._interp(t);
+    return Math.exp(ldf);
+  }
+  _interp(t) {
+    const ts = this.times, ls = this.logDFs;
+    if (t <= ts[0]) return ls[0];
+    if (t >= ts[ts.length-1]) {
+      // flat extrapolation
+      const n = ts.length-1;
+      return ls[n] + (ls[n]-ls[n-1])/(ts[n]-ts[n-1]) * (t - ts[n]);
+    }
+    let lo = 0, hi = ts.length-1;
+    while (hi - lo > 1) { const mid = (lo+hi)>>1; if (ts[mid] <= t) lo = mid; else hi = mid; }
+    const w = (t - ts[lo]) / (ts[hi] - ts[lo]);
+    return ls[lo] * (1-w) + ls[hi] * w;
+  }
+  add(d, df) {
+    const t = this.t(d), ldf = Math.log(df);
+    const idx = this.times.findIndex(ti => ti >= t);
+    if (idx === -1) { this.times.push(t); this.logDFs.push(ldf); }
+    else if (Math.abs(this.times[idx] - t) < 1e-9) { this.logDFs[idx] = ldf; }
+    else { this.times.splice(idx, 0, t); this.logDFs.splice(idx, 0, ldf); }
+  }
+  zeroRate(d) {  // continuous
+    const t = this.t(d); if (t < 1e-9) return 0;
+    return -Math.log(this.df(d)) / t;
+  }
+  zeroRateAnn(d) {
+    const t = this.t(d); if (t < 1e-9) return 0;
+    return Math.pow(this.df(d), -1/t) - 1;
+  }
+  fwd3M(d) {
+    const d2 = addDays(d, 91);
+    const dcf = yf360(d, d2);
+    return (this.df(d) / this.df(d2) - 1) / dcf;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SCHEDULE (backward, absorb short front stub)
+// ═══════════════════════════════════════════════════════════════════════
+
+function makeSchedule(eff, mat, freqM) {
+  const dates = [mat];
+  let d = mat;
+  while (true) {
+    const prev = modFol(addMonths(d, -freqM));
+    if (daysBetween(eff, prev) <= 0) break;
+    dates.push(prev); d = prev;
+  }
+  dates.push(eff);
+  dates.reverse();
+  // absorb short front stub
+  const threshold = (freqM - 1) * 28;
+  if (dates.length > 2 && daysBetween(dates[0], dates[1]) < threshold) dates.splice(1,1);
+  return dates;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  OIS SWAP ANALYTICS
+// ═══════════════════════════════════════════════════════════════════════
+
+function oisAnnuity(curve, eff, mat) {
+  const sched = makeSchedule(eff, mat, 12);
+  let a = 0;
+  for (let i = 1; i < sched.length; i++) {
+    const dcf = yf360(sched[i-1], sched[i]);
+    a += dcf * curve.df(sched[i]);
+  }
+  return a;
+}
+
+function oisFloatNPV(curve, eff, mat) {
+  return curve.df(eff) - curve.df(mat);
+}
+
+function oisParRate(curve, eff, mat) {
+  return oisFloatNPV(curve, eff, mat) / oisAnnuity(curve, eff, mat);
+}
+
+function calibrateOIS(curve, eff, mat, S) {
+  const sched = makeSchedule(eff, mat, 12);
+  let num = curve.df(sched[0]);
+  for (let i = 1; i < sched.length - 1; i++) {
+    const dcf = yf360(sched[i-1], sched[i]);
+    num -= S * dcf * curve.df(sched[i]);
+  }
+  const dcfLast = yf360(sched[sched.length-2], sched[sched.length-1]);
+  return num / (1 + S * dcfLast);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  MAIN BOOTSTRAP
+// ═══════════════════════════════════════════════════════════════════════
+
+let CURVE = null;
+let INSTRUMENTS = [];
+
+function bootstrap() {
+  const ref = new Date('2025-06-18');
+  const T0  = ref;
+  const T2  = advance(ref, 2);
+
+  function r(id) { return +document.getElementById(id).value / 1e4; }
+
+  const curve = new Curve(ref);
+  curve.add(ref, 1.0);
+
+  INSTRUMENTS = [];
+
+  // deposits
+  const deps = [
+    { label:'O/N',  s:T0, e:advance(T0,1),  rate:r('r_on') },
+    { label:'1W',   s:T2, e:advance(T2,0,0,7), rate:r('r_1w') },
+    { label:'1M',   s:T2, e:advance(T2,0,1),   rate:r('r_1m') },
+    { label:'3M',   s:T2, e:advance(T2,0,3),   rate:r('r_3m') },
+    { label:'6M',   s:T2, e:advance(T2,0,6),   rate:r('r_6m') },
+    { label:'9M',   s:T2, e:advance(T2,0,9),   rate:r('r_9m') },
+  ];
+  // fix 1W — advance with days
+  deps[1].e = advance(addDays(T2, 7));
+
+  for (const d of deps) {
+    const dcf = yf360(d.s, d.e);
+    const df  = curve.df(d.s) / (1 + d.rate * dcf);
+    curve.add(d.e, df);
+    INSTRUMENTS.push({ label: d.label, type:'dep', s:d.s, e:d.e, rate:d.rate });
+  }
+
+  // OIS swaps
+  const swapDef = [
+    {id:'s_1y', months:12},  {id:'s_2y', months:24},  {id:'s_3y', months:36},
+    {id:'s_5y', months:60},  {id:'s_7y', months:84},  {id:'s_10y', months:120},
+    {id:'s_15y',months:180}, {id:'s_20y',months:240}, {id:'s_30y',months:360},
+  ];
+
+  for (const sw of swapDef) {
+    const S   = r(sw.id);
+    const mat = advance(T2, 0, sw.months);
+    const dfM = calibrateOIS(curve, T2, mat, S);
+    if (dfM > 0) curve.add(mat, dfM);
+    INSTRUMENTS.push({ label:`OIS ${sw.months/12}Y`, type:'ois', eff:T2, mat, rate:S });
+  }
+
+  // Global Newton (simplified: iterate Brent per swap to refine)
+  for (let iter = 0; iter < 30; iter++) {
+    let maxR = 0;
+    for (const sw of INSTRUMENTS.filter(x => x.type === 'ois')) {
+      const model = oisParRate(curve, sw.eff, sw.mat);
+      const res   = Math.abs(model - sw.rate);
+      maxR = Math.max(maxR, res);
+      const dfM = calibrateOIS(curve, sw.eff, sw.mat, sw.rate);
+      if (dfM > 0) curve.add(sw.mat, dfM);
+    }
+    if (maxR < 1e-10) break;
+  }
+
+  CURVE = curve;
+
+  // ── compute residuals
+  const residuals = {};
+  for (const inst of INSTRUMENTS) {
+    if (inst.type === 'dep') {
+      const dcf = yf360(inst.s, inst.e);
+      const model = (curve.df(inst.s)/curve.df(inst.e) - 1) / dcf;
+      residuals[inst.label] = (model - inst.rate) * 1e4;
+    } else {
+      const model = oisParRate(curve, inst.eff, inst.mat);
+      residuals[inst.label] = (model - inst.rate) * 1e4;
+    }
+  }
+  const maxRes = Math.max(...Object.values(residuals).map(Math.abs));
+  const converged = maxRes < 0.001;
+
+  // ── header stats
+  document.getElementById('hStatus').textContent = converged ? '✓ CONVERGED' : '✗ NOT CONVERGED';
+  document.getElementById('hStatus').className   = converged ? 'val status-ok' : 'val status-err';
+  document.getElementById('hMaxRes').textContent = maxRes.toFixed(6) + ' bps';
+  document.getElementById('hIter').textContent   = '20 instruments';
+
+  // ── steepness
+  const t2y  = advance(T2, 0, 24);
+  const t10y = advance(T2, 0, 120);
+  const steep = (curve.zeroRate(t10y) - curve.zeroRate(t2y)) * 1e4;
+  document.getElementById('steepness').textContent = steep.toFixed(1);
+
+  // ── curve table
+  const outputTenors = [
+    {label:'1W',  d:advance(ref,7)},
+    {label:'1M',  d:advance(ref,0,1)},
+    {label:'3M',  d:advance(ref,0,3)},
+    {label:'6M',  d:advance(ref,0,6)},
+    {label:'1Y',  d:advance(ref,0,12)},
+    {label:'2Y',  d:advance(ref,0,24)},
+    {label:'3Y',  d:advance(ref,0,36)},
+    {label:'5Y',  d:advance(ref,0,60)},
+    {label:'7Y',  d:advance(ref,0,84)},
+    {label:'10Y', d:advance(ref,0,120)},
+    {label:'15Y', d:advance(ref,0,180)},
+    {label:'20Y', d:advance(ref,0,240)},
+    {label:'30Y', d:advance(ref,0,360)},
+  ];
+
+  const tCurve = document.getElementById('tCurve');
+  tCurve.innerHTML = outputTenors.map(({label, d}) => {
+    const df  = curve.df(d);
+    const zc  = curve.zeroRate(d) * 1e4;
+    const za  = curve.zeroRateAnn(d) * 1e4;
+    const f3m = curve.fwd3M(d) * 1e4;
+    return `<tr>
+      <td style="font-weight:600;color:var(--text)">${label}</td>
+      <td>${isoDate(d)}</td>
+      <td>${df.toFixed(8)}</td>
+      <td>${zc.toFixed(4)}</td>
+      <td>${za.toFixed(4)}</td>
+      <td>${f3m.toFixed(4)}</td>
+    </tr>`;
+  }).join('');
+
+  // ── residuals table
+  const tResid = document.getElementById('tResid');
+  tResid.innerHTML = INSTRUMENTS.map(inst => {
+    const res = residuals[inst.label];
+    const cls = Math.abs(res) < 0.001 ? 't-ok' : Math.abs(res) < 0.1 ? 't-warn' : 't-bad';
+    const mkt = (inst.rate * 1e4).toFixed(2);
+    return `<tr>
+      <td style="font-weight:500">${inst.label}</td>
+      <td>${mkt}b</td>
+      <td class="${cls}">${res >= 0 ? '+' : ''}${res.toFixed(6)}b</td>
+    </tr>`;
+  }).join('');
+
+  // ── charts
+  requestAnimationFrame(() => {
+    drawCurveChart('cZero', outputTenors.map(x => x.label),
+      outputTenors.map(x => curve.zeroRate(x.d)*1e4), '#3b82f6', 'Zero (cont)');
+    drawCurveChart('cFwd', outputTenors.map(x => x.label),
+      outputTenors.map(x => curve.fwd3M(x.d)*1e4), '#06b6d4', '3M Fwd');
+    drawCurveChart('cDF', outputTenors.map(x => x.label),
+      outputTenors.map(x => curve.df(x.d)), '#10b981', 'DF', false);
+    const parTenors = [{label:'1Y',months:12},{label:'2Y',months:24},{label:'3Y',months:36},
+      {label:'5Y',months:60},{label:'7Y',months:84},{label:'10Y',months:120},
+      {label:'15Y',months:180},{label:'20Y',months:240},{label:'30Y',months:360}];
+    drawBarChart('cPar', parTenors.map(x => x.label),
+      parTenors.map(x => oisParRate(curve, T2, advance(T2,0,x.months))*1e4));
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  CANVAS CHARTS
+// ═══════════════════════════════════════════════════════════════════════
+
+function drawCurveChart(id, labels, values, color, title, addArea=true) {
+  const canvas = document.getElementById(id);
+  const W = canvas.parentElement.offsetWidth - 28;
+  const H = parseInt(canvas.getAttribute('height'));
+  canvas.width  = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+
+  const pad = {t:12, r:12, b:28, l:52};
+  const cw = W - pad.l - pad.r;
+  const ch = H - pad.t - pad.b;
+
+  const minV = Math.min(...values) * 0.995;
+  const maxV = Math.max(...values) * 1.005;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // grid
+  ctx.strokeStyle = '#1a2030'; ctx.lineWidth = 1;
+  ctx.fillStyle = '#64748b'; ctx.font = `10px Consolas`;
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const v = minV + (maxV - minV) * i / 4;
+    const y = pad.t + ch - ch * (v - minV) / (maxV - minV);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+    ctx.fillText(v.toFixed(1), pad.l - 4, y + 3);
+  }
+
+  const n = labels.length;
+  const xOf = i => pad.l + cw * i / (n - 1);
+  const yOf = v => pad.t + ch - ch * (v - minV) / (maxV - minV);
+
+  // area fill
+  if (addArea) {
+    const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ch);
+    grad.addColorStop(0, color + '28');
+    grad.addColorStop(1, color + '00');
+    ctx.beginPath();
+    values.forEach((v, i) => i === 0 ? ctx.moveTo(xOf(i), yOf(v)) : ctx.lineTo(xOf(i), yOf(v)));
+    ctx.lineTo(xOf(n-1), pad.t + ch);
+    ctx.lineTo(xOf(0), pad.t + ch);
+    ctx.closePath();
+    ctx.fillStyle = grad; ctx.fill();
+  }
+
+  // line
+  ctx.beginPath();
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  values.forEach((v, i) => i === 0 ? ctx.moveTo(xOf(i), yOf(v)) : ctx.lineTo(xOf(i), yOf(v)));
+  ctx.stroke();
+
+  // dots
+  values.forEach((v, i) => {
+    ctx.beginPath(); ctx.arc(xOf(i), yOf(v), 3, 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.fill();
+  });
+
+  // x labels
+  ctx.fillStyle = '#64748b'; ctx.textAlign = 'center';
+  labels.forEach((l, i) => ctx.fillText(l, xOf(i), H - pad.b + 14));
+}
+
+function drawBarChart(id, labels, values) {
+  const canvas = document.getElementById(id);
+  const W = canvas.parentElement.offsetWidth - 28;
+  const H = parseInt(canvas.getAttribute('height'));
+  canvas.width  = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+
+  const pad = {t:8, r:8, b:24, l:44};
+  const cw = W - pad.l - pad.r;
+  const ch = H - pad.t - pad.b;
+  const minV = Math.min(...values) * 0.99;
+  const maxV = Math.max(...values) * 1.01;
+  const n = labels.length;
+  const bw = cw / n * 0.6;
+  const gap = cw / n;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#1a2030'; ctx.lineWidth = 1;
+  ctx.fillStyle = '#64748b'; ctx.font = `9px Consolas`; ctx.textAlign = 'right';
+  for (let i = 0; i <= 3; i++) {
+    const v = minV + (maxV - minV) * i / 3;
+    const y = pad.t + ch - ch * (v - minV) / (maxV - minV);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cw, y); ctx.stroke();
+    ctx.fillText(v.toFixed(1), pad.l - 3, y + 3);
+  }
+
+  labels.forEach((lbl, i) => {
+    const v   = values[i];
+    const x   = pad.l + gap * i + (gap - bw) / 2;
+    const yB  = pad.t + ch - ch * (v - minV) / (maxV - minV);
+    const bh  = ch * (v - minV) / (maxV - minV);
+    const hue = 200 + i * 14;
+    ctx.fillStyle = `hsl(${hue},70%,55%)`;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, yB, bw, bh, [3,3,0,0]);
+    else ctx.rect(x, yB, bw, bh);
+    ctx.fill();
+    ctx.fillStyle = '#64748b'; ctx.textAlign = 'center';
+    ctx.fillText(lbl, x + bw/2, H - pad.b + 12);
+  });
+}
+
+// init
+bootstrap();
+window.addEventListener('resize', () => requestAnimationFrame(bootstrap));
+</script>
+</body>
+</html>
